@@ -49,5 +49,31 @@ def ring_statistics(a, cutoff, maxlength=-1):
         Array with number of shortest path rings.
     """
     i, j, r = neighbour_list('ijD', a, cutoff)
+    #print(i, j, r)
     d = _matscipy.distances_on_graph(i, j)
     return _matscipy.find_sp_rings(i, j, r, d, maxlength)
+
+def ring_enum(a, cutoff, maxlength=-1):
+    """
+    Compute number of shortest path rings in sample.
+    See: D.S. Franzblau, Phys. Rev. B 44, 4925 (1991)
+
+    Parameters
+    ----------
+    a : ase.Atoms
+        Atomic configuration.
+    cutoff : float
+        Cutoff for neighbor counting.
+    maxlength : float, optional
+        Maximum ring length. Search for rings will stop at this length. This
+        is useful to speed up calculations for large systems.
+
+    Returns
+    -------
+    ringstat : array
+        Array with number of shortest path rings.
+    """
+    i, j, r = neighbour_list('ijD', a, cutoff)
+    #print(i, j, r)
+    d = _matscipy.distances_on_graph(i, j)
+    return _matscipy.enum_sp_rings(i, j, r, d, maxlength)

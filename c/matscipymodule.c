@@ -47,6 +47,8 @@ static PyMethodDef module_methods[] = {
       "Compute a map of distances on a graph." },
     { "find_sp_rings", (PyCFunction) py_find_sp_rings, METH_VARARGS,
       "Identify shortest-path rings on a graph." },
+    { "enum_sp_rings", (PyCFunction) py_enum_sp_rings, METH_VARARGS,
+      "Enumerate shortest-path rings on a graph." },
     { "neighbour_list", (PyCFunction) py_neighbour_list, METH_VARARGS,
       "Compute a neighbour list for an atomic configuration." },
     { "first_neighbours", (PyCFunction) py_first_neighbours, METH_VARARGS,

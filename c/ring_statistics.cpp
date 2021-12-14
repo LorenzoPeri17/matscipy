@@ -34,6 +34,11 @@
 #include "neighbours.h"
 #include "tools.h"
 
+#include <iostream>
+#include <cstdlib>
+#include <string>
+using namespace std;
+
 const int MAX_WALKER = 4096;
 
 /*
@@ -212,6 +217,7 @@ public:
     }
 
     std::vector<int>::size_type ring_size() { return ring_vertices.size(); }
+    std::vector<int> rings() { return ring_vertices; }
 };
 
 
@@ -268,7 +274,8 @@ step_closer(std::vector<Walker> &new_walkers, Walker &walker,
             int nat, int *seed, int *neighbours, double *r, /* neighbour list */
             int *dist, /* distance map */
             std::vector<bool> &done,
-            std::vector<npy_int> &ringstat)
+            std::vector<npy_int> &ringstat,
+            std::vector<std::vector<npy_int>> &ringenum)
 {
     /* Loop over neighbours of walker vertex */
     int i = -walker.vertex;
@@ -314,6 +321,16 @@ step_closer(std::vector<Walker> &new_walkers, Walker &walker,
                         if (ringstat.size() < walker.ring_size()+1)
                             ringstat.resize(walker.ring_size()+1);
                         ringstat[walker.ring_size()]++;
+
+                        ringenum.push_back(walker.rings());
+
+                        
+                        /*for (int iii=0; iii<walker.rings().size();iii++){
+                                cout << walker.rings()[iii];
+                                cout << ' ';
+                            }
+                        cout << '$' << walker.ring_size();
+                        cout << endl;*/
                     }
                 }
             }
@@ -336,7 +353,8 @@ step_closer(std::vector<Walker> &new_walkers, Walker &walker,
 bool
 find_sp_ring_vertices(int nat, int *seed, int neighbours_size, int *neighbours,
                       double *r, int *dist, int maxlength,
-                      std::vector<int> &ringstat)
+                      std::vector<int> &ringstat, 
+                      std::vector<std::vector<int>> &ringenum)
 {
     std::vector<bool> done(neighbours_size, false);
 
@@ -379,7 +397,7 @@ find_sp_ring_vertices(int nat, int *seed, int neighbours_size, int *neighbours,
                             if (!step_closer(*new_walkers, walker, a,
                                              nat, seed, neighbours, r,
                                              dist, done,
-                                             ringstat))
+                                             ringstat, ringenum))
                                 return false;
                         }
                     }
@@ -460,10 +478,11 @@ py_find_sp_rings(PyObject *self, PyObject *args)
     first_neighbours(nat, nneigh, i, seed);
 
     std::vector<npy_int> ringstat;
+    std::vector<std::vector<npy_int>> ringenum;
     if (!find_sp_ring_vertices(nat, seed, nneigh, (int *) PyArray_DATA(py_j),
                                (npy_double *) PyArray_DATA(py_r),
                                (npy_int *) PyArray_DATA(py_dist),
-                               maxlength, ringstat)) {
+                               maxlength, ringstat, ringenum)) {
         return NULL;
     }
 
@@ -473,4 +492,112 @@ py_find_sp_rings(PyObject *self, PyObject *args)
               (npy_int *) PyArray_DATA(py_ringstat));
 
     return py_ringstat;
+}
+
+
+extern "C" PyObject *
+py_enum_sp_rings(PyObject *self, PyObject *args)
+{
+    PyObject *py_i, *py_j, *py_r, *py_dist;
+    npy_int maxlength = -1;
+
+    if (!PyArg_ParseTuple(args, "OOOO|i", &py_i, &py_j, &py_r, &py_dist,
+                          &maxlength))
+        return NULL;
+
+    /* Make sure our arrays are contiguous */
+    py_i = PyArray_FROMANY(py_i, NPY_INT, 1, 1, NPY_C_CONTIGUOUS);
+    if (!py_i) return NULL;
+    py_j = PyArray_FROMANY(py_j, NPY_INT, 1, 1, NPY_C_CONTIGUOUS);
+    if (!py_j) return NULL;
+    py_r = PyArray_FROMANY(py_r, NPY_DOUBLE, 2, 2, NPY_C_CONTIGUOUS);
+    if (!py_r) return NULL;
+    py_dist = PyArray_FROMANY(py_dist, NPY_INT, 2, 2, NPY_C_CONTIGUOUS);
+    if (!py_dist) return NULL;
+
+    /* Check array shapes. */
+    npy_intp nneigh = PyArray_DIM((PyArrayObject *) py_i, 0);
+    if (PyArray_DIM((PyArrayObject *) py_j, 0) != nneigh) {
+        PyErr_SetString(PyExc_ValueError, "Array must have same length.");
+        return NULL;
+    }
+    if (PyArray_DIM((PyArrayObject *) py_r, 0) != nneigh) {
+        PyErr_SetString(PyExc_ValueError, "Array must have same length.");
+        return NULL;
+    }
+    if (PyArray_DIM((PyArrayObject *) py_r, 1) != 3) {
+        PyErr_SetString(PyExc_ValueError, "Distance array must have second "
+                                          "dimension of length 3.");
+        return NULL;
+    }
+
+    /* Get total number of atoms */
+    npy_int *i = (npy_int *) PyArray_DATA(py_i);
+    int nat = *std::max_element(i, i+nneigh)+1;
+
+    /* Check shape of distance map */
+    if (PyArray_DIM((PyArrayObject *) py_dist, 0) != nat ||
+        PyArray_DIM((PyArrayObject *) py_dist, 1) != nat) {
+        /*
+        char errstr[1024];
+        sprintf(errstr, "Distance map has shape %" NPY_INTP_FMT " x %" 
+                NPY_INTP_FMT " while number of atoms is %i.",
+                PyArray_DIM((PyArrayObject *) py_dist, 0),
+                PyArray_DIM((PyArrayObject *) py_dist, 1),
+                nat);
+        PyErr_SetString(PyExc_ValueError, errstr);
+        */
+        PyErr_SetString(PyExc_ValueError, "Distance map has wrong shape.");
+        return NULL;
+    }
+
+    /* Construct seed array */
+    int seed[nat+1];
+    first_neighbours(nat, nneigh, i, seed);
+
+    std::vector<npy_int> ringstat;
+    std::vector<std::vector<npy_int>> ringenum;
+    if (!find_sp_ring_vertices(nat, seed, nneigh, (int *) PyArray_DATA(py_j),
+                               (npy_double *) PyArray_DATA(py_r),
+                               (npy_int *) PyArray_DATA(py_dist),
+                               maxlength, ringstat, ringenum)) {
+        return NULL;
+    }
+
+
+    npy_int results[(int) ringenum.size()] [(int) ringstat.size() -1];
+
+    for (uint iii=0; iii<ringenum.size();iii++){
+        for(uint jjj=0 ;jjj<ringenum[iii].size();jjj++ ){
+                                results[iii][jjj] = abs(ringenum[iii][jjj]);
+                                //cout << results[iii][jjj]; cout << ' ';
+        }
+                        if(ringenum[iii].size() < ringstat.size()-1){
+                            for(uint zzz = ringenum[iii].size(); zzz<ringstat.size();zzz++){results[iii][zzz] = -1; 
+                            //cout << results[iii][zzz]; cout << ' ';
+                            }
+                        }
+                        //cout << '$' << ringenum[iii].size();cout << endl;
+                        }
+
+
+    //for (uint iii=0; iii<ringenum.size();iii++){for(uint jjj=0 ;jjj<(uint) ringstat.size() -1;jjj++ ){results[iii][jjj] = 0;}}
+
+    npy_intp dims[] = {(int) ringenum.size(), (int) ringstat.size()-1};
+    PyObject *py_ringenum;
+    // py_ringenum = PyArray_SimpleNewFromData(2, dims, NPY_INT, (void*)results);
+    py_ringenum = PyArray_ZEROS(2, dims, NPY_INT, 0);
+
+    // std::copy(0, (int) ringenum.size(),(npy_int *) PyArray_DATA(py_ringenum));
+    for (uint iii=0; iii<ringenum.size();iii++){
+        for(uint jjj=0 ;jjj<(uint) ringstat.size() -1;jjj++ ){
+            //cout<< 'a' << endl;
+            if(PyArray_SETITEM(py_ringenum, PyArray_GETPTR2(py_ringenum, iii, jjj), PyLong_FromLong(results[iii][jjj]))){ 
+                string warn = "Error casting npy_int";
+                for (uint iwarn = 0;iwarn<sizeof(warn);iwarn++) {cout<< warn[iwarn];} 
+                cout << endl;
+                }
+            }}
+
+    return (PyObject*) py_ringenum;
 }

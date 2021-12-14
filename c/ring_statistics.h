@@ -32,6 +32,7 @@ extern "C" {
 
 PyObject *py_distances_on_graph(PyObject *self, PyObject *args);
 PyObject *py_find_sp_rings(PyObject *self, PyObject *args);
+PyObject *py_enum_sp_rings(PyObject *self, PyObject *args);
 
 #ifdef __cplusplus
 }
